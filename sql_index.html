@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>SQL Analytics Engine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Berkshire+Swash&family=Fira+Code:wght@300;400;500;600&family=Mulish:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ━━━ TOKENS ━━━ */
+:root{
+  --bg:       #0f1117;
+  --surface:  #161b27;
+  --panel:    #1c2333;
+  --panel2:   #232d42;
+  --line:     #2a3550;
+  --line2:    #344060;
+  --green:    #3ddc84;
+  --green2:   #2ab56d;
+  --green-dim:#1a4a32;
+  --amber:    #ffb347;
+  --amber-dim:#3d2a00;
+  --blue:     #58a6ff;
+  --blue-dim: #0d2040;
+  --red:      #ff6b6b;
+  --cyan:     #56d0e0;
+  --purple:   #bc8cff;
+  --text:     #cdd9f0;
+  --muted:    #6b7ea8;
+  --muted2:   #8b9dc8;
+  --white:    #e8eeff;
+  --mono:     'Fira Code', monospace;
+  --sans:     'Mulish', sans-serif;
+  --display:  'Berkshire Swash', serif;
+}
+
+/* ━━━ RESET ━━━ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--sans);
+  font-size:13px;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:var(--surface)}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:3px}
+
+/* ━━━ SCANLINE EFFECT ━━━ */
+body::before{
+  content:'';
+  position:fixed;inset:0;
+  background:repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,.03) 2px,
+    rgba(0,0,0,.03) 4px
+  );
+  pointer-events:none;z-index:9999;
+}
+
+/* ━━━ TITLEBAR ━━━ */
+.titlebar{
+  height:48px;
+  background:var(--surface);
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;
+  padding:0 20px;gap:16px;
+  position:sticky;top:0;z-index:100;
+}
+.tb-dots{display:flex;gap:6px}
+.tb-dot{width:12px;height:12px;border-radius:50%}
+.tb-dot.r{background:#ff5f57}
+.tb-dot.y{background:#febc2e}
+.tb-dot.g{background:#28c840}
+.tb-title{
+  flex:1;text-align:center;
+  font-family:var(--mono);font-size:12px;
+  color:var(--muted);letter-spacing:.04em;
+}
+.tb-right{display:flex;gap:8px}
+.tbtn{
+  font-family:var(--mono);font-size:10px;
+  padding:5px 12px;border-radius:4px;
+  border:1px solid var(--line2);
+  background:var(--panel);color:var(--muted2);
+  cursor:pointer;transition:all .12s;letter-spacing:.03em;
+}
+.tbtn:hover{background:var(--panel2);color:var(--text);border-color:var(--line2)}
+.tbtn-green{background:var(--green-dim);border-color:var(--green2);color:var(--green)}
+.tbtn-green:hover{background:var(--green2)30}
+
+/* ━━━ SCREENS ━━━ */
+.screen{display:none}
+.screen.active{display:block;animation:fadein .3s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━
+   UPLOAD PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.upload-page{
+  min-height:calc(100vh - 48px);
+  display:grid;
+  grid-template-columns:1fr 480px;
+}
+
+/* Left — ASCII art + info */
+.up-left{
+  padding:60px 48px;
+  display:flex;flex-direction:column;justify-content:center;
+  border-right:1px solid var(--line);
+  position:relative;overflow:hidden;
+}
+.up-left::before{
+  content:'';position:absolute;
+  top:-100px;right:-100px;
+  width:400px;height:400px;
+  background:radial-gradient(circle,var(--green)04 0%,transparent 70%);
+  pointer-events:none;
+}
+
+.ascii-art{
+  font-family:var(--mono);
+  font-size:11px;line-height:1.4;
+  color:var(--green);
+  margin-bottom:36px;
+  opacity:.8;
+  white-space:pre;
+}
+
+.up-tagline{
+  font-family:var(--display);
+  font-size:clamp(28px,3vw,42px);
+  color:var(--white);
+  line-height:1.15;
+  margin-bottom:14px;
+  letter-spacing:-.01em;
+}
+.up-tagline span{color:var(--green)}
+
+.up-desc{
+  font-size:13px;color:var(--muted2);
+  line-height:1.8;max-width:440px;
+  margin-bottom:40px;
+}
+
+.feature-list{display:flex;flex-direction:column;gap:10px}
+.feat{
+  display:flex;align-items:center;gap:12px;
+  font-family:var(--mono);font-size:11px;color:var(--muted2);
+}
+.feat::before{content:'▶';color:var(--green);font-size:9px}
+.feat b{color:var(--text)}
+
+/* Right — drop zone */
+.up-right{
+  padding:60px 40px;
+  display:flex;flex-direction:column;justify-content:center;gap:24px;
+  background:var(--surface);
+}
+
+.terminal-prompt{
+  font-family:var(--mono);font-size:11px;
+  color:var(--muted);margin-bottom:4px;
+}
+.terminal-prompt span{color:var(--green)}
+
+.dropzone{
+  border:1px dashed var(--line2);
+  border-radius:8px;
+  padding:44px 28px;
+  text-align:center;
+  cursor:pointer;
+  background:var(--panel);
+  transition:all .2s;
+  position:relative;overflow:hidden;
+}
+.dropzone::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,var(--green)00,var(--green)03);
+  pointer-events:none;transition:.2s;
+}
+.dropzone:hover,.dropzone.over{
+  border-color:var(--green);
+  box-shadow:0 0 30px var(--green)15,inset 0 0 30px var(--green)05;
+}
+.dz-icon{font-size:36px;margin-bottom:14px;display:block;filter:grayscale(.3)}
+.dz-main{
+  font-family:var(--mono);font-size:13px;
+  color:var(--text);margin-bottom:4px;
+}
+.dz-sub{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.dz-formats{
+  display:flex;gap:6px;justify-content:center;margin-top:14px;
+}
+.dz-fmt{
+  font-family:var(--mono);font-size:9px;
+  padding:2px 8px;border-radius:3px;
+  background:var(--panel2);border:1px solid var(--line);
+  color:var(--muted2);
+}
+.dropzone input{display:none}
+
+.or-row{
+  display:flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-size:10px;color:var(--muted);
+}
+.or-row::before,.or-row::after{content:'';flex:1;height:1px;background:var(--line)}
+
+.demo-btn{
+  width:100%;padding:12px;
+  background:var(--green-dim);
+  border:1px solid var(--green2);
+  border-radius:6px;
+  font-family:var(--mono);font-size:12px;
+  color:var(--green);cursor:pointer;
+  transition:all .15s;letter-spacing:.03em;
+}
+.demo-btn:hover{background:var(--green2)40;box-shadow:0 0 16px var(--green)20}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━
+   PROCESSING PAGE
+━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.proc-page{
+  min-height:calc(100vh - 48px);
+  display:flex;align-items:center;justify-content:center;padding:40px;
+}
+.proc-terminal{
+  width:100%;max-width:640px;
+  background:var(--surface);
+  border:1px solid var(--line);
+  border-radius:8px;overflow:hidden;
+}
+.pt-header{
+  background:var(--panel);
+  padding:10px 16px;
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;
+}
+.pt-title{font-family:var(--mono);font-size:11px;color:var(--muted);flex:1;text-align:center}
+.pt-body{padding:24px;min-height:300px}
+.pt-line{
+  font-family:var(--mono);font-size:11px;
+  line-height:1.8;margin-bottom:2px;
+  animation:typein .1s ease;
+}
+@keyframes typein{from{opacity:0;transform:translateX(-4px)}to{opacity:1}}
+.pt-line .prompt{color:var(--green)}
+.pt-line .ok{color:var(--green)}
+.pt-line .info{color:var(--blue)}
+.pt-line .warn{color:var(--amber)}
+.pt-line .dim{color:var(--muted)}
+.pt-cursor{
+  display:inline-block;width:8px;height:13px;
+  background:var(--green);
+  animation:blink .8s step-end infinite;vertical-align:middle;
+}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.pt-footer{
+  padding:16px 24px;border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;
+}
+.pt-bar-wrap{flex:1;height:3px;background:var(--line);border-radius:2px;overflow:hidden;margin-right:14px}
+.pt-bar-fill{height:100%;background:var(--green);border-radius:2px;transition:width .4s ease;box-shadow:0 0 8px var(--green)60}
+.pt-pct{font-family:var(--mono);font-size:11px;color:var(--green)}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━
+   DASHBOARD
+━━━━━━━━━━━━━━━━━━━━━━━━━ */
+.dash{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 48px)}
+
+/* Sidebar */
+.sidebar{
+  background:var(--surface);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;
+  overflow-y:auto;
+}
+.sb-section{padding:16px 14px 8px}
+.sb-label{
+  font-family:var(--mono);font-size:9px;
+  color:var(--muted);letter-spacing:.1em;
+  text-transform:uppercase;margin-bottom:8px;
+  padding:0 6px;
+}
+.sb-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 10px;border-radius:5px;cursor:pointer;
+  transition:all .12s;margin-bottom:2px;
+  font-family:var(--mono);font-size:10px;color:var(--muted2);
+  border:1px solid transparent;
+}
+.sb-item:hover{background:var(--panel);color:var(--text)}
+.sb-item.active{
+  background:var(--green-dim);color:var(--green);
+  border-color:var(--green2)40;
+}
+.sb-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:var(--muted);flex-shrink:0;
+}
+.sb-item.active .sb-dot{background:var(--green)}
+.sb-item.done .sb-dot{background:var(--green2)}
+.sb-count{
+  margin-left:auto;
+  font-size:9px;padding:1px 6px;border-radius:10px;
+  background:var(--panel2);color:var(--muted);
+}
+.sb-item.active .sb-count{background:var(--green-dim);color:var(--green)}
+.sb-divider{height:1px;background:var(--line);margin:8px 14px}
+
+/* Main content */
+.main-content{overflow-y:auto;padding:24px}
+
+/* KPI row */
+.kpi-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:10px;margin-bottom:20px;
+}
+.kpi{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:6px;padding:14px 16px;
+  position:relative;overflow:hidden;
+}
+.kpi::before{
+  content:'';position:absolute;
+  top:0;left:0;width:2px;height:100%;
+  background:var(--kcolor,var(--green));
+}
+.kpi-lbl{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.kpi-val{font-family:var(--mono);font-size:22px;font-weight:500;color:var(--kcolor,var(--green));line-height:1}
+.kpi-sub{font-family:var(--mono);font-size:9px;color:var(--muted);margin-top:4px}
+
+/* Charts row */
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+@media(max-width:900px){.charts-row,.dash{grid-template-columns:1fr}}
+
+/* Card */
+.card{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:6px;overflow:hidden;margin-bottom:14px;
+}
+.card-head{
+  padding:11px 16px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--panel);
+}
+.card-title{font-family:var(--mono);font-size:11px;color:var(--text);letter-spacing:.02em}
+.card-badge{
+  font-family:var(--mono);font-size:9px;
+  padding:2px 8px;border-radius:3px;
+  background:var(--panel2);color:var(--muted2);
+  border:1px solid var(--line);
+}
+.card-body{padding:16px}
+.chart-box{height:200px;position:relative}
+
+/* SQL Query viewer */
+.query-view{margin-bottom:14px}
+.qv-head{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 14px;
+  background:var(--panel);border:1px solid var(--line);
+  border-radius:6px 6px 0 0;cursor:pointer;
+  transition:.12s;
+}
+.qv-head:hover{background:var(--panel2)}
+.qv-status{
+  width:8px;height:8px;border-radius:50%;
+  flex-shrink:0;
+}
+.qv-ok{background:var(--green)}
+.qv-err{background:var(--red)}
+.qv-title{font-family:var(--mono);font-size:11px;color:var(--text);flex:1}
+.qv-desc{font-family:var(--mono);font-size:9px;color:var(--muted)}
+.qv-rows{font-family:var(--mono);font-size:9px;color:var(--green)}
+.qv-toggle{font-family:var(--mono);font-size:10px;color:var(--muted);padding:2px 8px;border:1px solid var(--line);border-radius:3px;background:var(--panel2);cursor:pointer}
+.qv-body{
+  border:1px solid var(--line);border-top:none;
+  border-radius:0 0 6px 6px;overflow:hidden;
+  display:none;
+}
+.qv-body.open{display:block}
+.sql-block{
+  font-family:var(--mono);font-size:10px;line-height:1.7;
+  padding:14px 16px;background:var(--bg);
+  color:var(--cyan);border-bottom:1px solid var(--line);
+  overflow-x:auto;white-space:pre;
+}
+.sql-kw{color:var(--purple);font-weight:500}
+.sql-fn{color:var(--amber)}
+.sql-str{color:var(--green)}
+.res-table-wrap{overflow-x:auto;max-height:220px;overflow-y:auto}
+.res-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
+.res-table th{
+  position:sticky;top:0;
+  background:var(--panel);text-align:left;
+  padding:7px 12px;color:var(--cyan);
+  border-bottom:1px solid var(--line);font-weight:400;
+  white-space:nowrap;font-size:9px;letter-spacing:.04em;
+}
+.res-table td{
+  padding:6px 12px;border-bottom:1px solid var(--line)50;
+  color:var(--muted2);white-space:nowrap;
+}
+.res-table tr:hover td{background:var(--panel);color:var(--text)}
+
+/* Custom SQL */
+.sql-editor{
+  width:100%;min-height:80px;
+  font-family:var(--mono);font-size:11px;
+  background:var(--bg);color:var(--cyan);
+  border:1px solid var(--line2);border-radius:4px;
+  padding:12px;resize:vertical;outline:none;line-height:1.7;
+}
+.sql-editor:focus{border-color:var(--green);box-shadow:0 0 0 2px var(--green)15}
+.sql-run-btn{
+  margin-top:8px;padding:8px 20px;
+  background:var(--green-dim);border:1px solid var(--green2);
+  border-radius:4px;font-family:var(--mono);font-size:11px;
+  color:var(--green);cursor:pointer;transition:.15s;
+}
+.sql-run-btn:hover{background:var(--green2)40}
+.custom-result{margin-top:12px}
+
+/* Preview table */
+.prev-wrap{overflow-x:auto;max-height:280px;overflow-y:auto}
+.prev-table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:10px}
+.prev-table th{
+  position:sticky;top:0;background:var(--panel);
+  text-align:left;padding:7px 12px;color:var(--amber);
+  border-bottom:1px solid var(--line);font-weight:400;
+  white-space:nowrap;font-size:9px;
+}
+.prev-table td{padding:6px 12px;border-bottom:1px solid var(--line)40;color:var(--muted2);white-space:nowrap}
+.prev-table tr:hover td{background:var(--panel)}
+.pager{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.pager-info{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.pager-btns{display:flex;gap:6px}
+</style>
+</head>
+<body>
+
+<!-- ━━━ TITLEBAR ━━━ -->
+<div class="titlebar">
+  <div class="tb-dots">
+    <div class="tb-dot r"></div>
+    <div class="tb-dot y"></div>
+    <div class="tb-dot g"></div>
+  </div>
+  <div class="tb-title" id="tbTitle">sql_analytics_engine — ready</div>
+  <div class="tb-right" id="tbRight"></div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     SCREEN: UPLOAD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="screen active" id="sUpload">
+  <div class="upload-page">
+    <div class="up-left">
+      <pre class="ascii-art">  ___  ___  _      
+ / __|/ _ \| |     
+ \__ \ (_) | |__   
+ |___/\__\_\____|  
+  __ _ _ __   __ _ 
+ / _` | '_ \ / _` |
+| (_| | | | | (_| |
+ \__,_|_| |_|\__,_|</pre>
+
+      <h1 class="up-tagline">
+        CSV in.<br/>
+        <span>SQL insights out.</span>
+      </h1>
+      <p class="up-desc">
+        Upload any CSV or Excel file. The engine automatically loads it into a relational database, runs 15+ SQL queries — GROUP BY, JOINs, CTEs, Window Functions — and renders an interactive analytics dashboard.
+      </p>
+      <div class="feature-list">
+        <div class="feat"><b>Auto schema detection</b> — column types, names, relations</div>
+        <div class="feat"><b>15+ SQL queries</b> — GROUP BY, HAVING, CTE, Window Functions</div>
+        <div class="feat"><b>Live SQL editor</b> — write & run custom queries</div>
+        <div class="feat"><b>Export .sql file</b> — all queries downloadable</div>
+        <div class="feat"><b>MySQL locally</b> · <b>SQLite on Render</b></div>
+      </div>
+    </div>
+
+    <div class="up-right">
+      <div>
+        <div class="terminal-prompt"><span>$</span> select_file --format csv,xlsx</div>
+        <div class="dropzone" id="dropzone">
+          <span class="dz-icon">🗄</span>
+          <div class="dz-main">drop_file_here()</div>
+          <div class="dz-sub">or click to browse</div>
+          <input type="file" id="fileInput" accept=".csv,.xlsx,.xls"/>
+          <div class="dz-formats">
+            <span class="dz-fmt">.csv</span>
+            <span class="dz-fmt">.xlsx</span>
+            <span class="dz-fmt">.xls</span>
+            <span class="dz-fmt">≤ 300 MB</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="or-row">or</div>
+
+      <button class="demo-btn" onclick="loadDemo()">
+        $ run --demo sales_dataset.csv
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     SCREEN: PROCESSING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="screen" id="sProc">
+  <div class="proc-page">
+    <div class="proc-terminal">
+      <div class="pt-header">
+        <div class="tb-dots">
+          <div class="tb-dot r"></div><div class="tb-dot y"></div><div class="tb-dot g"></div>
+        </div>
+        <div class="pt-title">sql_engine — executing pipeline</div>
+      </div>
+      <div class="pt-body" id="termLog"></div>
+      <div class="pt-footer">
+        <div class="pt-bar-wrap"><div class="pt-bar-fill" id="procBar" style="width:0%"></div></div>
+        <div class="pt-pct" id="procPct">0%</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     SCREEN: DASHBOARD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+<div class="screen" id="sDash">
+  <div class="dash">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sidebar">
+      <div class="sb-section">
+        <div class="sb-label">Views</div>
+        <div class="sb-item active" onclick="showView('overview')" id="nav-overview">
+          <div class="sb-dot"></div> Overview
+        </div>
+        <div class="sb-item" onclick="showView('queries')" id="nav-queries">
+          <div class="sb-dot"></div> SQL Queries
+          <span class="sb-count" id="qcount">0</span>
+        </div>
+        <div class="sb-item" onclick="showView('charts')" id="nav-charts">
+          <div class="sb-dot"></div> Charts
+        </div>
+        <div class="sb-item" onclick="showView('editor')" id="nav-editor">
+          <div class="sb-dot"></div> SQL Editor
+        </div>
+        <div class="sb-item" onclick="showView('data')" id="nav-data">
+          <div class="sb-dot"></div> Data Preview
+        </div>
+      </div>
+      <div class="sb-divider"></div>
+      <div class="sb-section">
+        <div class="sb-label">Session</div>
+        <div class="sb-item" id="sb-db">
+          <div class="sb-dot" style="background:var(--green)"></div>
+          <span id="sb-db-text">—</span>
+        </div>
+        <div class="sb-item" id="sb-rows">
+          <div class="sb-dot" style="background:var(--blue)"></div>
+          <span id="sb-rows-text">—</span>
+        </div>
+        <div class="sb-item" id="sb-cols">
+          <div class="sb-dot" style="background:var(--amber)"></div>
+          <span id="sb-cols-text">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main-content" id="mainContent">
+
+      <!-- VIEW: OVERVIEW -->
+      <div id="view-overview">
+        <div class="kpi-row" id="kpiRow"></div>
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">▸ pipeline_log</span>
+            <span class="card-badge" id="logBadge">0 ops</span>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div id="logList" style="max-height:260px;overflow-y:auto;padding:14px 16px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: QUERIES -->
+      <div id="view-queries" style="display:none">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-head">
+            <span class="card-title">▸ executed_queries</span>
+            <span class="card-badge" id="qBadge">—</span>
+          </div>
+        </div>
+        <div id="queryList"></div>
+      </div>
+
+      <!-- VIEW: CHARTS -->
+      <div id="view-charts" style="display:none">
+        <div class="charts-row">
+          <div class="card">
+            <div class="card-head"><span class="card-title">▸ revenue_by_category</span></div>
+            <div class="card-body"><div class="chart-box"><canvas id="catChart"></canvas></div></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="card-title">▸ revenue_trend</span></div>
+            <div class="card-body"><div class="chart-box"><canvas id="trendChart"></canvas></div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><span class="card-title">▸ column_stats</span></div>
+          <div class="card-body" style="padding:0;overflow-x:auto">
+            <table class="res-table" style="width:100%">
+              <thead><tr>
+                <th>COLUMN</th><th>MIN</th><th>MAX</th><th>MEAN</th><th>SUM</th>
+              </tr></thead>
+              <tbody id="statsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: SQL EDITOR -->
+      <div id="view-editor" style="display:none">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">▸ custom_query_editor</span>
+            <span class="card-badge" id="editorTableBadge">table: —</span>
+          </div>
+          <div class="card-body">
+            <div class="terminal-prompt" style="margin-bottom:8px"><span style="color:var(--green)">sql&gt;</span> write your query below</div>
+            <textarea class="sql-editor" id="sqlEditor" placeholder="SELECT * FROM your_table LIMIT 10;"></textarea>
+            <button class="sql-run-btn" onclick="runCustom()">▶ Execute Query</button>
+            <div class="custom-result" id="customResult"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: DATA PREVIEW -->
+      <div id="view-data" style="display:none">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">▸ table_preview</span>
+            <span class="card-badge" id="prevBadge">—</span>
+          </div>
+          <div class="card-body" style="padding:0">
+            <div class="prev-wrap" id="prevWrap"></div>
+          </div>
+          <div style="padding:10px 16px;border-top:1px solid var(--line)">
+            <div class="pager">
+              <span class="pager-info" id="pagerInfo">—</span>
+              <div class="pager-btns">
+                <button class="tbtn" onclick="pg(-1)">◀ prev</button>
+                <button class="tbtn" onclick="pg(1)">next ▶</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main-content -->
+  </div><!-- /dash -->
+</div>
+
+<script>
+/* ━━━ STATE ━━━ */
+let D = null, JID = null;
+let page = 0; const PER = 15;
+let charts = {};
+let activeView = 'overview';
+
+/* ━━━ UPLOAD ━━━ */
+const dz = document.getElementById('dropzone');
+const fi = document.getElementById('fileInput');
+dz.addEventListener('click', () => fi.click());
+fi.addEventListener('change', e => e.target.files[0] && go(e.target.files[0]));
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('over');
+  e.dataTransfer.files[0] && go(e.dataTransfer.files[0]);
+});
+
+function loadDemo() {
+  const csv = `Product,Category,Revenue,Cost,Units,Region,Month
+Laptop Pro,Electronics,850000,550000,100,North,Jan
+Wireless Mouse,Accessories,36000,18000,300,South,Jan
+Monitor 4K,Electronics,640000,420000,200,East,Jan
+Keyboard RGB,Accessories,70000,42000,200,West,Jan
+SSD 1TB,Storage,150000,90000,200,North,Feb
+Laptop Pro,Electronics,920000,590000,110,South,Feb
+Graphics Card,Electronics,900000,580000,200,East,Feb
+Headphones,Audio,160000,96000,200,West,Feb
+Tablet,Electronics,560000,360000,200,North,Mar
+Smartphone,Electronics,660000,420000,300,South,Mar
+Router WiFi,Networking,64000,38000,200,East,Mar
+Webcam HD,Electronics,90000,54000,200,West,Mar
+Laptop Pro,Electronics,980000,630000,115,North,Apr
+SSD 1TB,Storage,180000,108000,240,South,Apr
+Monitor 4K,Electronics,700000,460000,220,East,Apr
+Headphones,Audio,176000,104000,220,West,Apr
+Smartphone,Electronics,720000,460000,330,North,May
+Graphics Card,Electronics,960000,620000,210,South,May
+Tablet,Electronics,600000,390000,210,East,May
+Laptop Pro,Electronics,1050000,680000,125,West,May`;
+  const blob = new Blob([csv], {type:'text/csv'});
+  go(new File([blob], 'demo_sales.csv', {type:'text/csv'}));
+}
+
+/* ━━━ PROCESSING ━━━ */
+const STEPS = [
+  {pct:8,  cls:'info',  msg:'$ reading file and detecting encoding...'},
+  {pct:20, cls:'ok',    msg:'✓ file parsed successfully'},
+  {pct:32, cls:'info',  msg:'$ cleaning: removing duplicates + imputing nulls...'},
+  {pct:45, cls:'ok',    msg:'✓ data cleaned and normalized'},
+  {pct:55, cls:'info',  msg:'$ loading into database (CREATE TABLE + INSERT)...'},
+  {pct:68, cls:'ok',    msg:'✓ table created and populated'},
+  {pct:75, cls:'info',  msg:'$ running GROUP BY queries...'},
+  {pct:82, cls:'info',  msg:'$ running CTE and Window Function queries...'},
+  {pct:90, cls:'info',  msg:'$ running HAVING, subquery, ranking queries...'},
+  {pct:97, cls:'ok',    msg:'✓ all queries executed'},
+];
+let stepTimer = null;
+
+function addLine(cls, msg) {
+  const log = document.getElementById('termLog');
+  const line = document.createElement('div');
+  line.className = 'pt-line';
+  line.innerHTML = `<span class="${cls}">${msg}</span>`;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+}
+
+function setBar(pct) {
+  document.getElementById('procBar').style.width = pct + '%';
+  document.getElementById('procPct').textContent = pct + '%';
+}
+
+async function go(file) {
+  show('sProc');
+  document.getElementById('termLog').innerHTML = '';
+  document.getElementById('tbTitle').textContent = `sql_engine — processing ${file.name}`;
+  addLine('dim', `$ sql_engine --input "${file.name}"`);
+  setBar(0);
+
+  let si = 0;
+  stepTimer = setInterval(() => {
+    if (si < STEPS.length) {
+      const s = STEPS[si++];
+      setBar(s.pct);
+      addLine(s.cls, s.msg);
+    }
+  }, 700);
+
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/upload', {method:'POST', body:fd});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Upload failed');
+    JID = j.job_id;
+    const res = await fetch(`/results/${JID}`).then(r => r.json());
+    clearInterval(stepTimer);
+    setBar(100);
+    addLine('ok', `✓ pipeline complete — ${res.shape[0].toLocaleString()} rows · ${Object.keys(res.queries).length} queries`);
+    addLine('green', '$ launching dashboard...');
+    setTimeout(() => buildDash(res), 800);
+  } catch(e) {
+    clearInterval(stepTimer);
+    addLine('warn', '✗ error: ' + e.message);
+  }
+}
+
+/* ━━━ SCREENS ━━━ */
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showView(name) {
+  ['overview','queries','charts','editor','data'].forEach(v => {
+    document.getElementById('view-' + v).style.display = v === name ? 'block' : 'none';
+    document.getElementById('nav-' + v).classList.toggle('active', v === name);
+  });
+  activeView = name;
+}
+
+/* ━━━ DASHBOARD ━━━ */
+function buildDash(data) {
+  D = data;
+  document.getElementById('tbTitle').textContent = `sql_engine — ${data.filename} · ${data.db_type}`;
+  document.getElementById('tbRight').innerHTML = `
+    <button class="tbtn" onclick="show('sUpload')">← new file</button>
+    <button class="tbtn tbtn-green" onclick="window.location='/export/${JID}'">↓ export .sql</button>
+  `;
+
+  // Sidebar session info
+  document.getElementById('sb-db-text').textContent = `db: ${data.db_type}`;
+  document.getElementById('sb-rows-text').textContent = `${data.shape[0].toLocaleString()} rows`;
+  document.getElementById('sb-cols-text').textContent = `${data.shape[1]} columns`;
+  document.getElementById('qcount').textContent = Object.keys(data.queries).length;
+
+  buildKPIs(data);
+  buildLog(data);
+  buildQueryList(data);
+  buildCharts(data);
+  buildStats(data);
+  buildPreview(data);
+
+  // Editor table name
+  document.getElementById('editorTableBadge').textContent = `table: ${data.table_name}`;
+  document.getElementById('sqlEditor').placeholder = `SELECT * FROM ${data.table_name} LIMIT 10;`;
+
+  show('sDash');
+  showView('overview');
+}
+
+function buildKPIs(d) {
+  const st = d.stats || {};
+  const det = d.detected || {};
+  const qs = d.queries || {};
+  const kpis = [
+    {lbl:'Rows', val: d.shape[0].toLocaleString(), sub:'clean records', c:'var(--green)'},
+    {lbl:'Columns', val: d.shape[1], sub:'after engineering', c:'var(--blue)'},
+    {lbl:'SQL Queries', val: Object.keys(qs).length, sub:'auto-executed', c:'var(--purple)'},
+  ];
+  if (det.revenue && st[det.revenue]) {
+    kpis.push({lbl:'Total Revenue', val: fmtK(st[det.revenue].sum), sub:'sum', c:'var(--green)'});
+  }
+  if (st['Profit']) {
+    kpis.push({lbl:'Net Profit', val: fmtK(st['Profit'].sum), sub:'revenue − cost', c: parseFloat(st['Profit'].sum) >= 0 ? 'var(--green)' : 'var(--red)'});
+  }
+  document.getElementById('kpiRow').innerHTML = kpis.map(k => `
+    <div class="kpi" style="--kcolor:${k.c}">
+      <div class="kpi-lbl">${k.lbl}</div>
+      <div class="kpi-val">${k.val}</div>
+      <div class="kpi-sub">${k.sub}</div>
+    </div>`).join('');
+}
+
+function buildLog(d) {
+  const logs = d.logs || [];
+  document.getElementById('logBadge').textContent = logs.length + ' ops';
+  document.getElementById('logList').innerHTML = logs.map((l, i) => `
+    <div class="pt-line">
+      <span class="${l.startsWith('✓') ? 'ok' : l.startsWith('✗') ? 'warn' : 'dim'}">
+        [${String(i+1).padStart(2,'0')}] ${l}
+      </span>
+    </div>`).join('');
+}
+
+function buildQueryList(d) {
+  const qs = d.queries || {};
+  const count = Object.keys(qs).length;
+  document.getElementById('qBadge').textContent = count + ' queries';
+  document.getElementById('queryList').innerHTML = Object.entries(qs).map(([key, q]) => {
+    const ok = !q.error;
+    const sqlHtml = highlightSQL(q.sql);
+    const rowsHtml = ok && q.rows.length > 0 ? `
+      <div class="res-table-wrap">
+        <table class="res-table">
+          <thead><tr>${q.columns.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+          <tbody>${q.rows.slice(0,8).map(r =>
+            `<tr>${q.columns.map(c => `<td>${r[c] ?? '—'}</td>`).join('')}</tr>`
+          ).join('')}</tbody>
+        </table>
+      </div>` : (q.error ? `<div style="font-family:var(--mono);font-size:10px;color:var(--red);padding:12px">${q.error}</div>` : '');
+
+    return `
+      <div class="query-view">
+        <div class="qv-head" onclick="toggleQuery('${key}')">
+          <div class="qv-status ${ok ? 'qv-ok' : 'qv-err'}"></div>
+          <span class="qv-title">${q.title}</span>
+          <span class="qv-desc">${q.desc}</span>
+          ${ok ? `<span class="qv-rows">${q.row_count} rows</span>` : ''}
+          <span class="qv-toggle">▼</span>
+        </div>
+        <div class="qv-body" id="qb-${key}">
+          <div class="sql-block">${sqlHtml}</div>
+          ${rowsHtml}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleQuery(key) {
+  const el = document.getElementById('qb-' + key);
+  el.classList.toggle('open');
+}
+
+function highlightSQL(sql) {
+  const kws = ['SELECT','FROM','WHERE','GROUP BY','ORDER BY','HAVING','LIMIT','JOIN','LEFT','RIGHT','INNER','ON','AS','WITH','CASE','WHEN','THEN','ELSE','END','DISTINCT','COUNT','SUM','AVG','MAX','MIN','ROUND','RANK','OVER','PARTITION BY','AND','OR','NOT','IN','IS NULL','IS NOT NULL','INSERT','CREATE','TABLE','DROP','UPDATE','SET'];
+  let h = sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  kws.sort((a,b) => b.length - a.length).forEach(kw => {
+    const re = new RegExp(`\\b(${kw})\\b`, 'gi');
+    h = h.replace(re, `<span class="sql-kw">$1</span>`);
+  });
+  ['RANK()','SUM()','AVG()','COUNT()','MAX()','MIN()','ROUND()'].forEach(fn => {
+    h = h.replace(new RegExp(fn.replace('()','\\(\\)'), 'gi'), `<span class="sql-fn">${fn}</span>`);
+  });
+  return h;
+}
+
+function buildCharts(d) {
+  const ch = d.chart || {};
+  if (ch.cat_revenue) {
+    if (charts.cat) charts.cat.destroy();
+    charts.cat = new Chart(document.getElementById('catChart'), {
+      type: 'bar',
+      data: {
+        labels: ch.cat_revenue.labels,
+        datasets: [{
+          label: 'Revenue',
+          data: ch.cat_revenue.values,
+          backgroundColor: '#3ddc8420',
+          borderColor: '#3ddc84',
+          borderWidth: 1.5,
+          borderRadius: 3,
+        }]
+      },
+      options: chartOpts()
+    });
+  } else {
+    document.getElementById('catChart').closest('.card').querySelector('.chart-box').innerHTML =
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;padding:40px">No category column detected</div>';
+  }
+
+  if (ch.trend) {
+    if (charts.trend) charts.trend.destroy();
+    charts.trend = new Chart(document.getElementById('trendChart'), {
+      type: 'line',
+      data: {
+        labels: ch.trend.labels,
+        datasets: [{
+          label: 'Revenue',
+          data: ch.trend.values,
+          borderColor: '#58a6ff',
+          borderWidth: 2,
+          pointRadius: 3,
+          pointBackgroundColor: '#58a6ff',
+          tension: 0.3,
+          fill: true,
+          backgroundColor: '#58a6ff10',
+        }]
+      },
+      options: chartOpts()
+    });
+  } else {
+    document.getElementById('trendChart').closest('.card').querySelector('.chart-box').innerHTML =
+      '<div style="font-family:var(--mono);font-size:10px;color:var(--muted);text-align:center;padding:40px">No date column detected</div>';
+  }
+}
+
+function chartOpts() {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: {display:false},
+      tooltip: {
+        backgroundColor:'#1c2333', borderColor:'#2a3550', borderWidth:1,
+        titleFont:{family:'Fira Code',size:11}, bodyFont:{family:'Fira Code',size:11},
+        titleColor:'#cdd9f0', bodyColor:'#6b7ea8',
+      }
+    },
+    scales: {
+      x: {ticks:{color:'#6b7ea8',font:{family:'Fira Code',size:9},maxRotation:35}, grid:{color:'#2a3550'}},
+      y: {ticks:{color:'#6b7ea8',font:{family:'Fira Code',size:9}}, grid:{color:'#2a3550'}}
+    }
+  };
+}
+
+function buildStats(d) {
+  const st = d.stats || {};
+  document.getElementById('statsTbody').innerHTML = Object.entries(st).map(([col, s]) => `
+    <tr>
+      <td style="color:var(--amber)">${col}</td>
+      <td>${fmt(s.min)}</td><td>${fmt(s.max)}</td>
+      <td style="color:var(--cyan)">${fmt(s.mean)}</td>
+      <td style="color:var(--green)">${fmtK(s.sum)}</td>
+    </tr>`).join('');
+}
+
+function buildPreview(d) {
+  page = 0; renderPrev(d);
+}
+function renderPrev(d) {
+  if (!d) return;
+  const rows = d.preview || [], cols = d.columns || [];
+  const total = Math.ceil(rows.length / PER);
+  const slice = rows.slice(page*PER, (page+1)*PER);
+  document.getElementById('prevBadge').textContent = rows.length + ' rows preview';
+  document.getElementById('pagerInfo').textContent = `Page ${page+1} of ${total}`;
+  document.getElementById('prevWrap').innerHTML = `
+    <table class="prev-table">
+      <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+      <tbody>${slice.map(r=>`<tr>${cols.map(c=>`<td>${r[c]??''}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`;
+}
+function pg(dir) {
+  if (!D) return;
+  const total = Math.ceil((D.preview||[]).length/PER);
+  page = Math.max(0, Math.min(total-1, page+dir));
+  renderPrev(D);
+}
+
+/* Custom SQL */
+async function runCustom() {
+  if (!D || !JID) return;
+  const sql = document.getElementById('sqlEditor').value.trim();
+  if (!sql) return;
+  const res = document.getElementById('customResult');
+  res.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--muted)">executing...</div>';
+  try {
+    const r = await fetch(`/query/${JID}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({sql})
+    });
+    const j = await r.json();
+    if (j.error) { res.innerHTML = `<div style="font-family:var(--mono);font-size:10px;color:var(--red);margin-top:10px">✗ ${j.error}</div>`; return; }
+    const cols = j.columns, rows = j.rows;
+    res.innerHTML = `
+      <div style="font-family:var(--mono);font-size:9px;color:var(--green);margin-top:10px;margin-bottom:6px">✓ ${j.row_count} rows returned</div>
+      <div class="res-table-wrap">
+        <table class="res-table">
+          <thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+          <tbody>${rows.slice(0,50).map(r=>`<tr>${cols.map(c=>`<td>${r[c]??'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch(e) {
+    res.innerHTML = `<div style="color:var(--red);font-family:var(--mono);font-size:10px">${e.message}</div>`;
+  }
+}
+
+/* Utils */
+function fmt(v) {
+  if (v == null) return '—';
+  const n = parseFloat(v);
+  return isNaN(n) ? v : n.toLocaleString(undefined,{maximumFractionDigits:2});
+}
+function fmtK(v) {
+  if (v == null) return '—';
+  const n = parseFloat(v);
+  if (isNaN(n)) return v;
+  if (Math.abs(n) >= 1e7) return (n/1e7).toFixed(1) + ' Cr';
+  if (Math.abs(n) >= 1e5) return (n/1e5).toFixed(1) + ' L';
+  if (Math.abs(n) >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toFixed(2);
+}
+</script>
+</body>
+</html>
