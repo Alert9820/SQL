@@ -51,13 +51,24 @@ def safe_col(name):
     """Make column name SQL-safe."""
     return re.sub(r'[^a-zA-Z0-9_]', '_', str(name).strip())
 
-def detect_cols(columns):
-    cols = [c.lower() for c in columns]
+def detect_cols(columns, df=None):
     rev  = next((c for c in columns if any(k in c.lower() for k in ['revenue','sales','income','amount','price','total'])), None)
     cost = next((c for c in columns if any(k in c.lower() for k in ['cost','expense','spend'])), None)
-    cat  = next((c for c in columns if any(k in c.lower() for k in ['category','product','region','segment','department','type','name'])), None)
     date = next((c for c in columns if any(k in c.lower() for k in ['date','month','period','year','time'])), None)
     qty  = next((c for c in columns if any(k in c.lower() for k in ['qty','units','quantity','count','volume'])), None)
+
+    # Category: must have low cardinality (not names/IDs)
+    cat = None
+    for c in columns:
+        if any(k in c.lower() for k in ['category','product','region','segment','department','type','channel']):
+            if df is not None:
+                nuniq = df[c].nunique()
+                if nuniq <= 50:  # skip if too many unique values (names, IDs etc)
+                    cat = c
+                    break
+            else:
+                cat = c
+                break
     return rev, cost, cat, date, qty
 
 # ── SQLite runner ─────────────────────────────────────────────────────────────
@@ -342,7 +353,7 @@ def run_pipeline(file_bytes, filename):
     logs.append(f"Loaded {len(df):,} rows into {'MySQL' if DB_TYPE == 'mysql' else 'SQLite'} table '{table_name}'")
 
     # Detect cols again after engineering
-    rev, cost, cat, date, qty = detect_cols(df.columns.tolist())
+    rev, cost, cat, date, qty = detect_cols(df.columns.tolist(), df)
     queries = build_queries(table_name, df.columns.tolist(), rev, cost, cat, date, qty)
 
     # Run all queries
@@ -384,20 +395,33 @@ def run_pipeline(file_bytes, filename):
             'sum': clean(round(float(s.sum()), 2)),
         }
 
-    # Chart data
+    # Chart data — always convert to numeric first
     chart = {}
+    if rev and rev in df.columns:
+        df[rev] = pd.to_numeric(df[rev], errors='coerce').fillna(0)
+    if cost and cost in df.columns:
+        df[cost] = pd.to_numeric(df[cost], errors='coerce').fillna(0)
+    if qty and qty in df.columns:
+        df[qty] = pd.to_numeric(df[qty], errors='coerce').fillna(0)
+
     if rev and cat and cat in df.columns:
-        grp = df.groupby(cat)[rev].sum().sort_values(ascending=False).head(8)
-        chart['cat_revenue'] = {
-            'labels': list(grp.index.astype(str)),
-            'values': [clean(round(float(v), 2)) for v in grp.values]
-        }
+        try:
+            grp = df.groupby(cat)[rev].sum().sort_values(ascending=False).head(8)
+            chart['cat_revenue'] = {
+                'labels': list(grp.index.astype(str)),
+                'values': [clean(round(float(v), 2)) for v in grp.values]
+            }
+        except Exception:
+            pass
     if date and rev and date in df.columns:
-        grp2 = df.groupby(date)[rev].sum()
-        chart['trend'] = {
-            'labels': list(grp2.index.astype(str)),
-            'values': [clean(round(float(v), 2)) for v in grp2.values]
-        }
+        try:
+            grp2 = df.groupby(date)[rev].sum()
+            chart['trend'] = {
+                'labels': list(grp2.index.astype(str)),
+                'values': [clean(round(float(v), 2)) for v in grp2.values]
+            }
+        except Exception:
+            pass
 
     preview = df.head(50).replace({float('nan'): None, float('inf'): None, float('-inf'): None}).to_dict(orient='records')
 
@@ -484,3 +508,4 @@ def health():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000, debug=False)
+        
